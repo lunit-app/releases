@@ -50,6 +50,13 @@ jobs:
             echo "Release $tag already exists" >&2
             exit 1
           fi
+          # Draft releases do not reliably materialize their tag until they
+          # are published. Create the neutral bot-owned tag explicitly before
+          # removing the temporary staging branch.
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag -a "$tag" -m "LUnit $tag"
+          git push origin "refs/tags/$tag"
           gh release create "$tag" -R "$RELEASE_REPOSITORY" --draft \
             --title "LUnit $tag" --notes "$RELEASE_NOTES" --target "$STAGING_BRANCH" "${assets[@]}"
 
