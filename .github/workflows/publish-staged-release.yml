@@ -57,8 +57,14 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git tag -a "$tag" -m "LUnit $tag"
           git push origin "refs/tags/$tag"
+          notes_file="$(mktemp)"
+          {
+            printf '%s\n\n' '<p align="center"><img src="https://raw.githubusercontent.com/lunit-app/releases/main/docs/brand/LU.png" alt="LUnit" width="96"></p>'
+            printf '%s\n' "${RELEASE_NOTES:-}"
+          } > "$notes_file"
           gh release create "$tag" -R "$RELEASE_REPOSITORY" --draft \
-            --title "LUnit $tag" --notes "$RELEASE_NOTES" --target "$STAGING_BRANCH" "${assets[@]}"
+            --title "LUnit $tag" --notes-file "$notes_file" --target "$STAGING_BRANCH" "${assets[@]}"
+          rm -f "$notes_file"
 
       - name: Remove temporary staging branch
         if: always()
