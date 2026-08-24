@@ -1,0 +1,60 @@
+name: Publish staged release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.8.0
+        required: true
+        type: string
+      staging_branch:
+        description: Temporary branch containing the release assets
+        required: true
+        type: string
+      notes:
+        description: Short release summary
+        required: false
+        type: string
+  repository_dispatch:
+    types: [publish-release]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REPOSITORY: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag || github.event.client_payload.tag }}
+      STAGING_BRANCH: ${{ inputs.staging_branch || github.event.client_payload.staging_branch }}
+      RELEASE_NOTES: ${{ inputs.notes || github.event.client_payload.notes }}
+    steps:
+      - name: Check out staged assets
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.staging_branch || github.event.client_payload.staging_branch }}
+
+      - name: Create public draft release as the Actions bot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          staging="release-staging/${tag#v}"
+          [[ -n "$tag" && -n "$STAGING_BRANCH" ]] || { echo "Missing release inputs" >&2; exit 1; }
+          [[ -d "$staging" ]] || { echo "Missing staging directory: $staging" >&2; exit 1; }
+          mapfile -t assets < <(find "$staging" -maxdepth 1 -type f -printf '%p\n' | sort)
+          [[ "${#assets[@]}" -ge 4 ]] || { echo "Expected release assets were not staged" >&2; exit 1; }
+          if gh release view "$tag" -R "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists" >&2
+            exit 1
+          fi
+          gh release create "$tag" -R "$RELEASE_REPOSITORY" --draft \
+            --title "LUnit $tag" --notes "$RELEASE_NOTES" --target "$STAGING_BRANCH" "${assets[@]}"
+
+      - name: Remove temporary staging branch
+        if: always()
+        shell: bash
+        run: |
+          gh api --method DELETE "repos/$RELEASE_REPOSITORY/git/refs/heads/$STAGING_BRANCH" >/dev/null 2>&1 || true
